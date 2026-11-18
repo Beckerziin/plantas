@@ -1,0 +1,13 @@
+# Configuração do Render (Blueprint). O Render lê este arquivo e cria o serviço sozinho.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web                # serviço web (responde requisições HTTP)
+    name: plantas
+    runtime: python
+    plan: free               # plano gratuito (512 MB de RAM; "dorme" após 15 min sem acesso)
+    buildCommand: pip install -r requirements-render.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /       # rota GET "/" devolve o status da API
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10       # mesma versão usada no desenvolvimento

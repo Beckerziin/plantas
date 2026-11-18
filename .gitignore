@@ -1,0 +1,10 @@
+# Ambiente virtual criado pelo run_pipeline.py
+venv/
+.venv/
+
+# Cache do Python
+__pycache__/
+*.pyc
+
+# Gráficos e métricas gerados pelo treino/avaliação
+resultados/

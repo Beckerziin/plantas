@@ -1,0 +1,10 @@
+# Dependências só para RODAR A API no Render (sem treino).
+# Usa a versão do PyTorch só para CPU: é bem menor (~200 MB contra ~2 GB da versão com CUDA)
+# e o Render não tem GPU, então a versão CUDA seria peso morto.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
+torchvision==0.20.1+cpu
+pillow
+fastapi
+uvicorn
+python-multipart

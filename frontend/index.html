@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detector de Folhas</title>
+<!--
+  Front-end do detector de plantas saudáveis x doentes.
+  É servido pela própria API (api.py) em http://localhost:8000/app.
+  Como a página e a API ficam no mesmo endereço, não é preciso configurar CORS.
+  Tudo (HTML, CSS e JavaScript) está neste único arquivo, sem bibliotecas externas.
+-->
+<style>
+  /* ------------------------------------------------------------
+     CORES (variáveis CSS) — tema claro e escuro
+     ------------------------------------------------------------ */
+  :root {
+    --fundo: #f4f7f2;
+    --cartao: #ffffff;
+    --texto: #1d2a1f;
+    --texto-suave: #5b6b5e;
+    --borda: #dbe4d8;
+    --verde: #2f8f4e;
+    --verde-claro: #e3f3e8;
+    --vermelho: #c2412d;
+    --vermelho-claro: #fbe9e5;
+    --sombra: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(30,60,35,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fundo: #121813;
+      --cartao: #1b231c;
+      --texto: #e6eee6;
+      --texto-suave: #9fb0a2;
+      --borda: #2c382e;
+      --verde: #52c27a;
+      --verde-claro: #1d3324;
+      --vermelho: #ef7a63;
+      --vermelho-claro: #3a221d;
+      --sombra: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--fundo);
+    color: var(--texto);
+    line-height: 1.5;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+
+  /* Cabeçalho */
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  h1 { font-size: 1.6rem; margin: 0; display: flex; align-items: center; gap: 10px; }
+  h1 svg { width: 30px; height: 30px; color: var(--verde); }
+  .subtitulo { margin: 4px 0 0; color: var(--texto-suave); }
+
+  /* Indicador de status da API */
+  .status { display: inline-flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--texto-suave);
+            border: 1px solid var(--borda); border-radius: 999px; padding: 4px 12px; background: var(--cartao); }
+  .status .ponto { width: 8px; height: 8px; border-radius: 50%; background: #aaa; }
+  .status.online .ponto { background: var(--verde); }
+  .status.offline .ponto { background: var(--vermelho); }
+
+  .cartao { background: var(--cartao); border: 1px solid var(--borda); border-radius: 16px; box-shadow: var(--sombra); padding: 20px; }
+
+  /* Área de arrastar e soltar */
+  .zona {
+    display: block;
+    border: 2px dashed var(--borda); border-radius: 12px; padding: 36px 16px; text-align: center;
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .zona:hover, .zona.arrastando { border-color: var(--verde); background: var(--verde-claro); }
+  .zona:focus-visible { outline: 3px solid var(--verde); outline-offset: 2px; }
+  .zona svg { width: 44px; height: 44px; color: var(--verde); }
+  .zona strong { display: block; margin-top: 8px; font-size: 1.05rem; }
+  .zona span { color: var(--texto-suave); font-size: .9rem; }
+  input[type=file] { display: none; }
+
+  /* Pré-visualização + resultado */
+  .analise { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+  @media (max-width: 600px) { .analise { grid-template-columns: 1fr; } }
+  .preview { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; border: 1px solid var(--borda); background: var(--fundo); }
+  .nome-arquivo { font-size: .85rem; color: var(--texto-suave); margin-top: 6px; word-break: break-all; }
+
+  .resultado { display: flex; flex-direction: column; gap: 14px; }
+  .selo { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.3rem;
+          padding: 8px 14px; border-radius: 10px; align-self: flex-start; }
+  .selo.saudavel { background: var(--verde-claro); color: var(--verde); }
+  .selo.doente { background: var(--vermelho-claro); color: var(--vermelho); }
+  .mensagem { margin: 0; }
+
+  /* Barras de probabilidade */
+  .barra-rotulo { display: flex; justify-content: space-between; font-size: .9rem; margin-bottom: 4px; }
+  .barra { height: 10px; border-radius: 999px; background: var(--fundo); border: 1px solid var(--borda); overflow: hidden; }
+  .barra > div { height: 100%; border-radius: 999px; width: 0; transition: width .5s ease; }
+  .barra .saudavel { background: var(--verde); }
+  .barra .doente { background: var(--vermelho); }
+  .detalhes { font-size: .8rem; color: var(--texto-suave); }
+
+  /* Carregando / erro */
+  .carregando { display: flex; align-items: center; gap: 10px; color: var(--texto-suave); }
+  .spinner { width: 20px; height: 20px; border: 3px solid var(--borda); border-top-color: var(--verde); border-radius: 50%; animation: gira .8s linear infinite; }
+  @keyframes gira { to { transform: rotate(360deg); } }
+  .erro { background: var(--vermelho-claro); color: var(--vermelho); padding: 10px 14px; border-radius: 10px; margin: 0; }
+
+  button.secundario { align-self: flex-start; background: none; border: 1px solid var(--borda); color: var(--texto);
+                      border-radius: 8px; padding: 8px 14px; font: inherit; cursor: pointer; }
+  button.secundario:hover { border-color: var(--verde); }
+
+  footer { text-align: center; font-size: .8rem; color: var(--texto-suave); margin-top: 24px; }
+  footer a { color: inherit; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>
+        <!-- Ícone de folha -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
+          <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+        </svg>
+        Detector de Folhas
+      </h1>
+      <p class="subtitulo">Envie a foto de uma folha e descubra se ela está saudável ou doente.</p>
+    </div>
+    <div id="status" class="status" title="Status da API">
+      <span class="ponto"></span><span id="status-texto">Verificando API…</span>
+    </div>
+  </header>
+
+  <section class="cartao">
+    <!-- Zona de envio: clicar, arrastar ou colar (Ctrl+V) uma imagem -->
+    <label id="zona" class="zona" tabindex="0" for="arquivo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <strong>Clique, arraste ou cole uma imagem</strong>
+      <span>JPG, PNG, BMP ou WEBP · até 10 MB</span>
+    </label>
+    <input id="arquivo" type="file" accept="image/*">
+
+    <!-- Área que aparece depois de escolher a imagem -->
+    <div id="analise" class="analise" hidden>
+      <div>
+        <img id="preview" class="preview" alt="Imagem enviada">
+        <div id="nome-arquivo" class="nome-arquivo"></div>
+      </div>
+
+      <div class="resultado">
+        <div id="carregando" class="carregando" hidden><div class="spinner"></div>Analisando a folha…</div>
+        <p id="erro" class="erro" hidden></p>
+
+        <div id="saida" hidden>
+          <div id="selo" class="selo"></div>
+          <p id="mensagem" class="mensagem"></p>
+          <div id="barras" style="display:flex;flex-direction:column;gap:10px;margin:14px 0"></div>
+          <div id="detalhes" class="detalhes"></div>
+        </div>
+
+        <button id="nova" class="secundario" type="button" hidden>Analisar outra imagem</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Modelo de deep learning (PyTorch) · <a href="/docs" target="_blank">Documentação da API</a>
+  </footer>
+</main>
+
+<script>
+// ------------------------------------------------------------
+// CONFIGURAÇÃO
+// ------------------------------------------------------------
+
+// Endereço da API. Vazio = mesmo endereço da página (a API serve este arquivo).
+// Se abrir o HTML direto do disco, usa http://localhost:8000.
+const API = location.protocol === "file:" ? "http://localhost:8000" : "";
+
+const TAMANHO_MAX = 10 * 1024 * 1024;   // mesmo limite do api.py (10 MB)
+
+// Nomes bonitos para as classes (as chaves são os nomes das pastas do dataset).
+const ROTULOS = { saudavel: "Saudável", doente: "Doente" };
+
+// Atalho para pegar elementos pelo id.
+const $ = (id) => document.getElementById(id);
+
+// ------------------------------------------------------------
+// STATUS DA API (GET /)
+// ------------------------------------------------------------
+
+async function verificarStatus() {
+  try {
+    const r = await fetch(API + "/");
+    const dados = await r.json();
+    $("status").className = "status online";
+    $("status-texto").textContent = `API online · ${dados.dispositivo}`;
+  } catch {
+    $("status").className = "status offline";
+    $("status-texto").textContent = "API offline";
+  }
+}
+
+// ------------------------------------------------------------
+// ENVIO DA IMAGEM (POST /analisar)
+// ------------------------------------------------------------
+
+async function analisar(arquivo) {
+  if (!arquivo) return;
+
+  // Mostra a pré-visualização e esconde a zona de envio.
+  $("zona").hidden = true;
+  $("analise").hidden = false;
+  // Só mostra a pré-visualização se for imagem (senão apareceria um ícone quebrado).
+  const ehImagem = arquivo.type.startsWith("image/");
+  $("preview").hidden = !ehImagem;
+  if (ehImagem) $("preview").src = URL.createObjectURL(arquivo);
+  $("nome-arquivo").textContent = arquivo.name || "imagem colada";
+  $("saida").hidden = true;
+  $("erro").hidden = true;
+  $("nova").hidden = true;
+
+  // Validações rápidas no navegador (a API também valida).
+  if (!ehImagem) return mostrarErro("O arquivo escolhido não é uma imagem.");
+  if (arquivo.size > TAMANHO_MAX) return mostrarErro("A imagem é maior que 10 MB.");
+
+  $("carregando").hidden = false;
+
+  try {
+    // Monta o formulário com o campo "imagem", que é o nome esperado pela API.
+    const form = new FormData();
+    form.append("imagem", arquivo, arquivo.name || "imagem.png");
+
+    const r = await fetch(API + "/analisar", { method: "POST", body: form });
+    const dados = await r.json();
+
+    // Em caso de erro, o FastAPI devolve {"detail": "mensagem"}.
+    if (!r.ok) throw new Error(dados.detail || `Erro ${r.status}`);
+
+    mostrarResultado(dados);
+  } catch (e) {
+    mostrarErro(e.message === "Failed to fetch"
+      ? "Não foi possível falar com a API. Ela está rodando? (python api.py)"
+      : e.message);
+  } finally {
+    $("carregando").hidden = true;
+    $("nova").hidden = false;
+  }
+}
+
+function mostrarResultado(d) {
+  const pct = (v) => (v * 100).toFixed(1).replace(".", ",") + "%";
+
+  $("selo").className = "selo " + d.resultado;
+  $("selo").textContent = (d.resultado === "saudavel" ? "✓ " : "⚠ ") + (ROTULOS[d.resultado] || d.resultado);
+  $("mensagem").textContent = d.mensagem;
+
+  // Uma barra para cada classe, da mais provável para a menos provável.
+  const barras = $("barras");
+  barras.innerHTML = "";
+  Object.entries(d.probabilidades)
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([classe, p]) => {
+      const bloco = document.createElement("div");
+      bloco.innerHTML = `
+        <div class="barra-rotulo"><span></span><strong></strong></div>
+        <div class="barra"><div class="${classe}"></div></div>`;
+      bloco.querySelector("span").textContent = ROTULOS[classe] || classe;
+      bloco.querySelector("strong").textContent = pct(p);
+      barras.appendChild(bloco);
+      // Anima a barra no próximo quadro (para a transição do CSS funcionar).
+      requestAnimationFrame(() => { bloco.querySelector(".barra > div").style.width = (p * 100) + "%"; });
+    });
+
+  $("detalhes").textContent = `Confiança: ${pct(d.confianca)} · Tempo de análise: ${d.tempo_ms} ms`;
+  $("saida").hidden = false;
+}
+
+function mostrarErro(msg) {
+  $("erro").textContent = msg;
+  $("erro").hidden = false;
+  $("nova").hidden = false;
+}
+
+function reiniciar() {
+  $("analise").hidden = true;
+  $("zona").hidden = false;
+  $("arquivo").value = "";
+  $("zona").focus();
+}
+
+// ------------------------------------------------------------
+// EVENTOS: clicar, arrastar e soltar, colar
+// ------------------------------------------------------------
+
+$("arquivo").addEventListener("change", (e) => analisar(e.target.files[0]));
+$("nova").addEventListener("click", reiniciar);
+
+// Teclado: Enter ou espaço na zona abre o seletor de arquivo.
+$("zona").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("arquivo").click(); }
+});
+
+// Arrastar e soltar.
+["dragenter", "dragover"].forEach((ev) => $("zona").addEventListener(ev, (e) => {
+  e.preventDefault(); $("zona").classList.add("arrastando");
+}));
+["dragleave", "drop"].forEach((ev) => $("zona").addEventListener(ev, (e) => {
+  e.preventDefault(); $("zona").classList.remove("arrastando");
+}));
+$("zona").addEventListener("drop", (e) => analisar(e.dataTransfer.files[0]));
+
+// Colar uma imagem com Ctrl+V em qualquer lugar da página.
+document.addEventListener("paste", (e) => {
+  const item = [...e.clipboardData.items].find((i) => i.type.startsWith("image/"));
+  if (item) analisar(item.getAsFile());
+});
+
+verificarStatus();
+</script>
+</body>
+</html>
